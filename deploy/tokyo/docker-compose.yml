@@ -1,0 +1,290 @@
+services:
+  postgres:
+    image: timescale/timescaledb-ha:pg16-all
+    container_name: aiq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - postgres_data:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - aiq
+
+  redis:
+    image: redis:7-alpine
+    container_name: aiq-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "200mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - aiq
+
+  control-api:
+    build:
+      context: ../..
+      dockerfile: services/control-api/Dockerfile
+    container_name: aiq-control-api
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JAVA_OPTS: -XX:MaxRAMPercentage=60 -XX:InitialRAMPercentage=30 -XX:+ExitOnOutOfMemoryError
+      TRADING_MODE: ${TRADING_MODE:-PAPER_ONLY}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
+      API_AUTH_ENABLED: ${API_AUTH_ENABLED:-true}
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN}
+      APPROVAL_OPERATORS: ${APPROVAL_OPERATORS:-alex}
+      ACCOUNT_EQUITY_USD: ${ACCOUNT_EQUITY_USD:-1000}
+      MIN_AGENT_CONFIDENCE: ${MIN_AGENT_CONFIDENCE:-0.65}
+      MIN_RISK_REWARD: ${MIN_RISK_REWARD:-1.5}
+      MAX_TRADE_RISK_PCT: ${MAX_TRADE_RISK_PCT:-0.005}
+      MAX_DAILY_LOSS_PCT: ${MAX_DAILY_LOSS_PCT:-0.02}
+      MAX_WEEKLY_LOSS_PCT: ${MAX_WEEKLY_LOSS_PCT:-0.05}
+      MAX_CONSECUTIVE_LOSSES: ${MAX_CONSECUTIVE_LOSSES:-3}
+      MAX_LEVERAGE: ${MAX_LEVERAGE:-2}
+      MAX_SYMBOL_POSITION_PCT: ${MAX_SYMBOL_POSITION_PCT:-0.20}
+      MAX_OPEN_POSITIONS: ${MAX_OPEN_POSITIONS:-3}
+      MAX_ENTRY_DEVIATION_PCT: ${MAX_ENTRY_DEVIATION_PCT:-0.003}
+      MAX_SLIPPAGE_PCT: ${MAX_SLIPPAGE_PCT:-0.002}
+      APPROVAL_TTL_MINUTES: ${APPROVAL_TTL_MINUTES:-10}
+      POLYMARKET_MODE: ${POLYMARKET_MODE:-OBSERVE_ONLY}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # IMPORTANT: bind to the Tailscale interface IP only. TOKYO_TAILSCALE_IP
+    # must be exported by scripts/deploy-tokyo.sh before `docker compose up`.
+    # The ${VAR:-127.0.0.1} fallback is a fail-secure: if anyone runs
+    # `docker compose up` directly without exporting TOKYO_TAILSCALE_IP, the
+    # port binds to localhost (Tailnet won't reach it, services break
+    # visibly) instead of 0.0.0.0 (silent public exposure).
+    ports:
+      - "${TOKYO_TAILSCALE_IP:-127.0.0.1}:8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    networks:
+      - aiq
+
+  collector-worker:
+    build:
+      context: ../..
+      dockerfile: workers/Dockerfile
+    container_name: aiq-collector-worker
+    restart: unless-stopped
+    environment:
+      WORKER_ROLE: collector
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CONTROL_API_URL: http://control-api:8080
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN}
+      BINANCE_SPOT_BASE_URL: ${BINANCE_SPOT_BASE_URL}
+      BINANCE_FUTURES_BASE_URL: ${BINANCE_FUTURES_BASE_URL}
+      BINANCE_SYMBOLS: ${BINANCE_SYMBOLS}
+      HYPERLIQUID_INFO_URL: ${HYPERLIQUID_INFO_URL}
+      HYPERLIQUID_COINS: ${HYPERLIQUID_COINS}
+      POLYMARKET_MODE: ${POLYMARKET_MODE:-OBSERVE_ONLY}
+      POLYMARKET_GAMMA_URL: ${POLYMARKET_GAMMA_URL}
+      POLYMARKET_CLOB_URL: ${POLYMARKET_CLOB_URL}
+      POLYMARKET_GEOBLOCK_URL: ${POLYMARKET_GEOBLOCK_URL}
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aiq
+
+  strategy-worker:
+    build:
+      context: ../..
+      dockerfile: workers/Dockerfile
+    container_name: aiq-strategy-worker
+    restart: unless-stopped
+    environment:
+      WORKER_ROLE: strategy
+      DATABASE_URL: ${DATABASE_URL}
+      CONTROL_API_URL: http://control-api:8080
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN}
+      BINANCE_SYMBOLS: ${BINANCE_SYMBOLS}
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      control-api:
+        condition: service_healthy
+    networks:
+      - aiq
+
+  agent-worker:
+    build:
+      context: ../..
+      dockerfile: workers/Dockerfile
+    container_name: aiq-agent-worker
+    restart: unless-stopped
+    environment:
+      WORKER_ROLE: agent
+      DATABASE_URL: ${DATABASE_URL}
+      CONTROL_API_URL: http://control-api:8080
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_MODEL: ${LLM_MODEL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-deterministic}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.deepseek.com}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-deepseek-embedding}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      RECALL_WIKI_LIMIT: ${RECALL_WIKI_LIMIT:-5}
+      RECALL_EXPERIENCE_LIMIT: ${RECALL_EXPERIENCE_LIMIT:-5}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      HERMES_WEBHOOK_URL: ${HERMES_WEBHOOK_URL:-}
+      HERMES_WEBHOOK_SECRET: ${HERMES_WEBHOOK_SECRET:-}
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      control-api:
+        condition: service_healthy
+    networks:
+      - aiq
+
+  review-worker:
+    build:
+      context: ../..
+      dockerfile: workers/Dockerfile
+    container_name: aiq-review-worker
+    restart: unless-stopped
+    environment:
+      WORKER_ROLE: review
+      DATABASE_URL: ${DATABASE_URL}
+      CONTROL_API_URL: http://control-api:8080
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-deterministic}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.deepseek.com}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-deepseek-embedding}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      control-api:
+        condition: service_healthy
+    networks:
+      - aiq
+
+  paper-broker:
+    build:
+      context: ../..
+      dockerfile: workers/Dockerfile
+    container_name: aiq-paper-broker
+    restart: unless-stopped
+    environment:
+      WORKER_ROLE: paper-broker
+      DATABASE_URL: ${DATABASE_URL}
+      CONTROL_API_URL: http://control-api:8080
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      control-api:
+        condition: service_healthy
+    networks:
+      - aiq
+
+  position-keeper:
+    build:
+      context: ../..
+      dockerfile: workers/Dockerfile
+    container_name: aiq-position-keeper
+    restart: unless-stopped
+    environment:
+      WORKER_ROLE: position-keeper
+      DATABASE_URL: ${DATABASE_URL}
+      CONTROL_API_URL: http://control-api:8080
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN}
+      ACCOUNT_EQUITY_USD: ${ACCOUNT_EQUITY_USD:-1000}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      control-api:
+        condition: service_healthy
+    networks:
+      - aiq
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    container_name: aiq-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
+      GF_SERVER_ROOT_URL: https://${LA_PUBLIC_HOST:-localhost}/grafana/
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    # Same fail-secure fallback as control-api: bind to lo if Tailscale IP
+    # is not exported, never bind to 0.0.0.0.
+    ports:
+      - "${TOKYO_TAILSCALE_IP:-127.0.0.1}:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aiq
+
+  backup-worker:
+    image: postgres:16-alpine
+    container_name: aiq-backup-worker
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ../../backups:/backups
+      - ../../scripts:/scripts:ro
+    command: ["sh", "-c", "while true; do /scripts/backup-postgres.sh || true; sleep 86400; done"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aiq
+
+volumes:
+  postgres_data:
+  redis_data:
+  grafana_data:
+
+networks:
+  aiq:
+    driver: bridge

@@ -1,0 +1,58 @@
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: aiq-caddy
+    restart: unless-stopped
+    environment:
+      LA_PUBLIC_HOST: ${LA_PUBLIC_HOST}
+      TOKYO_TAILSCALE_HOST: ${TAILSCALE_HOSTNAME_TOKYO:-ai-quant-tokyo}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Optional: drop Cloudflare Origin Certificate as
+      # caddy-tls/origin.pem + caddy-tls/origin.key, then uncomment the
+      # `tls` directive in Caddyfile.
+      - ./caddy-tls:/etc/caddy/tls:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    # 100.100.100.100 is Tailscale's MagicDNS resolver — required so the
+    # container can resolve `ai-quant-tokyo`. Without this, docker falls
+    # back to a public DNS (because Ubuntu's systemd-resolved stub at
+    # 127.0.0.53 is unreachable from inside containers) and Tailnet
+    # hostnames will NXDOMAIN. 1.1.1.1 is a fallback for public DNS.
+    dns:
+      - 100.100.100.100
+      - 1.1.1.1
+    networks:
+      - aiq
+
+  notifier:
+    build:
+      context: ../..
+      dockerfile: workers/Dockerfile
+    container_name: aiq-la-notifier
+    restart: unless-stopped
+    environment:
+      WORKER_ROLE: notifier
+      CONTROL_API_URL: http://${TAILSCALE_HOSTNAME_TOKYO:-ai-quant-tokyo}:8080
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      HERMES_WEBHOOK_URL: ${HERMES_WEBHOOK_URL:-}
+      HERMES_WEBHOOK_SECRET: ${HERMES_WEBHOOK_SECRET:-}
+      TZ: ${TZ:-Asia/Shanghai}
+    dns:
+      - 100.100.100.100
+      - 1.1.1.1
+    networks:
+      - aiq
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  aiq:
+    driver: bridge

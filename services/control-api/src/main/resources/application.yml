@@ -1,0 +1,84 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: ai-quant-control-api
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ai_quant}
+    username: ${SPRING_DATASOURCE_USERNAME:ai_quant}
+    password: ${SPRING_DATASOURCE_PASSWORD:ai_quant}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 1
+      connection-timeout: 5000
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+      database: ${REDIS_DB:0}
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+aiq:
+  trading-mode: ${TRADING_MODE:PAPER_ONLY}
+  live-trading-enabled: ${LIVE_TRADING_ENABLED:false}
+  auth:
+    enabled: ${API_AUTH_ENABLED:true}
+    token: ${API_AUTH_TOKEN:}
+    allow-anonymous-paths:
+      - /health
+      - /actuator/health
+  approval:
+    operator-allowlist: ${APPROVAL_OPERATORS:operator}
+    max-active-age-minutes: ${APPROVAL_MAX_ACTIVE_AGE_MIN:10}
+  risk:
+    account-equity-usd: ${ACCOUNT_EQUITY_USD:1000}
+    min-agent-confidence: ${MIN_AGENT_CONFIDENCE:0.65}
+    min-risk-reward: ${MIN_RISK_REWARD:1.5}
+    max-trade-risk-pct: ${MAX_TRADE_RISK_PCT:0.005}
+    max-daily-loss-pct: ${MAX_DAILY_LOSS_PCT:0.02}
+    max-weekly-loss-pct: ${MAX_WEEKLY_LOSS_PCT:0.05}
+    max-consecutive-losses: ${MAX_CONSECUTIVE_LOSSES:3}
+    max-leverage: ${MAX_LEVERAGE:2}
+    max-symbol-position-pct: ${MAX_SYMBOL_POSITION_PCT:0.20}
+    max-open-positions: ${MAX_OPEN_POSITIONS:3}
+    approval-ttl-minutes: ${APPROVAL_TTL_MINUTES:10}
+    max-entry-deviation-pct: ${MAX_ENTRY_DEVIATION_PCT:0.003}
+    max-slippage-pct: ${MAX_SLIPPAGE_PCT:0.002}
+    require-stop-loss: true
+    require-manual-approval: true
+    pause-on-major-news: true
+    polymarket-mode: ${POLYMARKET_MODE:OBSERVE_ONLY}
+    symbol-whitelist:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+      - BTC
+      - ETH
+      - SOL
+    market-whitelist:
+      - BINANCE_SPOT_PAPER
+      - BINANCE_FUTURES_PAPER
+      - HYPERLIQUID_PERP_PAPER
+      - POLYMARKET_PAPER

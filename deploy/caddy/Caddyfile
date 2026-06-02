@@ -1,0 +1,71 @@
+{
+  admin off
+  # Cloudflare DNS is set to "DNS only" (grey cloud) in this deployment,
+  # so requests reach LA directly. Caddy sees the real client IP, not a
+  # Cloudflare edge IP. We do NOT add Cloudflare IP ranges to
+  # trusted_proxies — public clients never get a Tailscale CGNAT source
+  # IP, so the ACL below naturally rejects them.
+  servers {
+    trusted_proxies static private_ranges
+  }
+}
+
+{$LA_PUBLIC_HOST} {
+  encode gzip zstd
+
+  # ----------------------------------------------------------------------
+  # TLS
+  #
+  # DEFAULT (this deployment): Caddy auto-issues a Let's Encrypt cert via
+  # HTTP-01 / TLS-ALPN-01. Requires LA's public 80 and 443 reachable from
+  # the internet, which is the case because Cloudflare DNS is "DNS only"
+  # (not proxied).
+  #
+  # OPTIONAL UPGRADE: switch Cloudflare DNS to "Proxied" (orange cloud)
+  # for source-IP hiding + WAF, then:
+  #   1. Generate a Cloudflare Origin Certificate.
+  #   2. Place it at deploy/la/caddy-tls/origin.pem and origin.key.
+  #   3. Uncomment the `tls` line below.
+  #   4. Set Cloudflare SSL/TLS mode to "Full (strict)".
+  # tls /etc/caddy/tls/origin.pem /etc/caddy/tls/origin.key
+  # ----------------------------------------------------------------------
+
+  # Public health check — unauthenticated by design.
+  handle /health {
+    reverse_proxy http://{$TOKYO_TAILSCALE_HOST}:8080
+  }
+
+  # Public webhooks (Telegram / Hermes). Caller must carry its own
+  # signature/secret. control-api downstream still requires Bearer token
+  # for everything under /api/*.
+  handle /webhook/* {
+    reverse_proxy http://{$TOKYO_TAILSCALE_HOST}:8080
+  }
+
+  # /api/* — never exposed publicly. Only requests whose TCP source IP is
+  # in Tailscale CGNAT (100.64.0.0/10) or localhost are forwarded.
+  @internal_api {
+    path /api/*
+    remote_ip 100.64.0.0/10 127.0.0.1
+  }
+  handle @internal_api {
+    reverse_proxy http://{$TOKYO_TAILSCALE_HOST}:8080
+  }
+  handle /api/* {
+    respond "forbidden" 403
+  }
+
+  # /grafana/* — same Tailnet-only ACL.
+  @grafana_allowed {
+    path /grafana/*
+    remote_ip 100.64.0.0/10 127.0.0.1
+  }
+  handle @grafana_allowed {
+    reverse_proxy http://{$TOKYO_TAILSCALE_HOST}:3000
+  }
+  handle /grafana/* {
+    respond "forbidden" 403
+  }
+
+  respond "AI-Quant control plane is online" 200
+}

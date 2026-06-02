@@ -1,0 +1,25 @@
+# prevent build context from pulling in heavy or sensitive dirs
+.git/
+.git*
+.idea/
+.vscode/
+.DS_Store
+.m2/
+.pycache/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+target/
+**/target/
+backups/
+logs/
+data/
+.env
+.env.*
+!.env.example
+node_modules/
+docs/
+*.iml

@@ -1,0 +1,92 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "postgres", "uid": "ai_quant_postgres"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+      "pluginVersion": "11.1.4",
+      "targets": [{
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT equity_usd FROM account_snapshot ORDER BY created_at DESC LIMIT 1",
+        "refId": "A"
+      }],
+      "title": "Equity (USD)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "ai_quant_postgres"},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "id": 2,
+      "pluginVersion": "11.1.4",
+      "targets": [{
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT COUNT(*) AS open_positions FROM trade_position WHERE status='OPEN'",
+        "refId": "A"
+      }],
+      "title": "Open positions",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "ai_quant_postgres"},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "id": 3,
+      "pluginVersion": "11.1.4",
+      "targets": [{
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT COUNT(*) AS pending FROM approval_request WHERE status='PENDING'",
+        "refId": "A"
+      }],
+      "title": "Pending approvals",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "ai_quant_postgres"},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "id": 4,
+      "pluginVersion": "11.1.4",
+      "targets": [{
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT COUNT(*) AS risk_events_24h FROM risk_event WHERE created_at > now() - interval '24 hours'",
+        "refId": "A"
+      }],
+      "title": "Risk events (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "ai_quant_postgres"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 4},
+      "id": 5,
+      "pluginVersion": "11.1.4",
+      "targets": [{
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT created_at, symbol, risk_status, agent_json->>'direction' AS direction, confidence FROM decision_log ORDER BY created_at DESC LIMIT 50",
+        "refId": "A"
+      }],
+      "title": "Recent decisions",
+      "type": "table"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["ai-quant"],
+  "templating": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "AI-Quant Overview",
+  "uid": "ai-quant-overview",
+  "version": 1,
+  "weekStart": ""
+}

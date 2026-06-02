@@ -1,0 +1,5 @@
+# Place Cloudflare Origin Certificate files here if using Cloudflare
+# proxied mode (orange cloud). Expected filenames:
+#   origin.pem  - Cloudflare-issued origin certificate (PEM)
+#   origin.key  - corresponding private key (PEM)
+# Then uncomment the `tls` directive in deploy/caddy/Caddyfile.

@@ -1,0 +1,15 @@
+crypto:
+  binance:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+  hyperliquid:
+    - BTC
+    - ETH
+    - SOL
+polymarket:
+  observeOnly: true
+  categories:
+    - crypto
+    - macro
+    - elections

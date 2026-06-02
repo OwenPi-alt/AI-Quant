@@ -1,0 +1,32 @@
+mode: PAPER_ONLY
+liveTradingEnabled: false
+accountEquityUsd: 1000
+symbols:
+  whitelist:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+markets:
+  whitelist:
+    - BINANCE_SPOT_PAPER
+    - BINANCE_FUTURES_PAPER
+    - HYPERLIQUID_PERP_PAPER
+    - POLYMARKET_PAPER
+risk:
+  minAgentConfidence: 0.65
+  minRiskReward: 1.5
+  maxTradeRiskPct: 0.005
+  maxDailyLossPct: 0.02
+  maxWeeklyLossPct: 0.05
+  maxConsecutiveLosses: 3
+  maxLeverage: 2
+  maxSymbolPositionPct: 0.20
+  maxOpenPositions: 3
+  requireStopLoss: true
+  requireManualApproval: true
+  blockLiveOrders: true
+  pauseOnMajorNews: true
+  maxEntryDeviationPct: 0.003
+  maxSlippagePct: 0.002
+approval:
+  ttlMinutes: 10
